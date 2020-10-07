@@ -1,0 +1,54 @@
+---
+apiVersion: v1
+kind: Pod
+metadata:
+  name: marquez
+  labels:
+    app: discovery
+spec:
+  containers:
+    - name: front-end
+      image: marquezproject/marquez-web
+      ports:
+        - containerPort: 80
+          name: main
+        - containerPort: 8080
+          name: main2
+    - name: marquez
+      image: marquezproject/marquez
+      ports:
+        - containerPort: 5000
+          name: blah
+        - containerPort: 5001
+          name: blah2
+      env:
+        - name: MARQUEZ_PORT
+          value: "5000"
+        - name: MARQUEZ_ADMIN_PORT
+          value: "5001"
+        - name: POSTGRES_HOST
+          value: "db"
+        - name: POSTGRES_PORT
+          value: "5432"
+        - name: POSTGRES_DB
+          value: "marquez"
+        - name: POSTGRES_USER
+          value: "buendia"
+        - name: POSTGRES_PASSWORD
+          value: "macondo"
+      command: ["./wait-for-it.sh", "db:5432", "--", "./entrypoint.sh"]
+    - name: postgres
+      image: postgres:12.1
+      ports:
+        - containerPort: 5432
+      env:
+        - name: POSTGRES_USER
+          value: "postgres"
+        - name: POSTGRES_PASSWORD
+          value: "password"
+        - name: MARQUEZ_DB
+          value: "marquez"
+        - name: MARQUEZ_USER
+          value: "buendia"
+        - name: MARQUEZ_PASSWORD
+          value: "macondo"

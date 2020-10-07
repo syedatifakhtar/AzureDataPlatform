@@ -1,69 +1,77 @@
-import com.syedatifakhtar.scalaterraform.DestroyArguments.DestroyArgument
-import com.syedatifakhtar.scalaterraform.InitArguments.{BackendConfigs, HasBackend, InitArgument}
-import com.syedatifakhtar.scalaterraform.PlanAndApplyArguments.{ApplyArgument, PlanArgument, Vars}
+import com.syedatifakhtar.pipelines.Pipelines.Pipeline
+import com.syedatifakhtar.scalaterraform.TerraformPipelines.TerraformStep
 import com.syedatifakhtar.scalaterraform._
 import com.typesafe.config._
 
-import scala.collection.JavaConverters._
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
+
+object ArgsParser {
+  def parse(args: Array[String]) = {
+    args.map {
+      arg =>
+        (arg.split("--")(1).split("=")(0), arg.split("--")(1).split("=")(1))
+    }.toMap
+  }
+
+  val PIPELINENAME = "pipelineName"
+  val TASKNAME = "taskName"
+}
 
 object TerraformHelper {
 
-
   object PlatformInfraConfig {
-    val config: Config = ConfigFactory.load("platform.conf")
-  }
-
-  case class ConfigArgsResolver(nameInConfig: String) extends ArgsResolver {
-    def toConfigMap(conf: Config) = {
-      conf.entrySet().asScala.map(x => (x.getKey, x.getValue.render())).toMap
-    }
-    override def getInitArgs(): Seq[InitArgument] = {
-      val keyName = s"azure-data-platform.infra.${nameInConfig}.backend-config"
-      val backendConfig = if
-      (PlatformInfraConfig.config.hasPath(keyName))
-        Seq(HasBackend(), BackendConfigs(toConfigMap(PlatformInfraConfig.config.getConfig(keyName))))
-      else Seq.empty
-      backendConfig
-    }
-    override def getPlanArgs(): Seq[PlanArgument] = {
-      val vars = toConfigMap(PlatformInfraConfig.config.getConfig(s"azure-data-platform.infra.${nameInConfig}.vars"))
-      Seq(Vars(vars))
-    }
-    override def getApplyArgs(): Seq[ApplyArgument] = {
-      val vars = toConfigMap(PlatformInfraConfig.config.getConfig(s"azure-data-platform.infra.${nameInConfig}.vars"))
-      Seq(Vars(vars))
-    }
-    override def getDestroyArgs(): Seq[DestroyArgument] = {
-      val vars = toConfigMap(PlatformInfraConfig.config.getConfig(s"azure-data-platform.infra.${nameInConfig}.vars"))
-      Seq(DestroyArguments.Vars(vars))
-    }
+    val config: Config = ConfigFactory.load("conf/platform.conf")
   }
 
 
   def main(args: Array[String]): Unit = {
 
-    println("Base dir: " + this.getClass.getClassLoader().getResource("").getPath())
-    val srcDir = s"${this.getClass.getClassLoader().getResource("terraform").getPath}/platform"
+    val argsMap = ArgsParser.parse(args)
+    println("Got args:\n")
+    argsMap.foreach(println)
+    val srcDir = s"${this.getClass.getClassLoader().getResource("terraform").getPath}"
     val buildDir = s"${this.getClass.getClassLoader().getResource("terraform").getPath}/build"
 
-    def platformApply = {
-      val platform = TerraformModule(srcDir,
-        buildDir,
-        "platform")(ConfigArgsResolver("platform"))
-      for {_ <- platform.init
-           out <- platform.output} yield {
-        out.toString()
-      }
+
+    def configValueResolver = {
+      import scala.collection.JavaConverters._
+      path: String =>
+        Try {
+          PlatformInfraConfig
+            .config
+            .getConfig(path)
+            .entrySet()
+            .asScala.map(x => (x.getKey, x.getValue.unwrapped.toString))
+            .toMap
+        }.toOption
     }
 
-    val methodMap: Map[String, () => Try[Any]] = Map(
-      ("platformApply" -> platformApply _))
-    methodMap(args(0))() match {
-      case Failure(e) => e.printStackTrace()
-      case Success(value) => println(s"Output: $value")
+    val configTree = "azure-data-platform.infra"
+
+    def configResolverBuilder =
+      DefaultConfigArgsResolver(configValueResolver)(configTree) _
+
+    def registerPipelines(pipelines: Pipeline*): Map[String, Pipeline] = {
+      pipelines.map { p => p.name -> p }.toMap
     }
+
+    val command = argsMap(ArgsParser.TASKNAME)
+    val partiallyAppliedModule = TerraformModule(srcDir, buildDir) _
+    val accountStep = TerraformStep(partiallyAppliedModule("account")(configResolverBuilder("account"))) _
+    val environmentStep = TerraformStep(partiallyAppliedModule("environment")(configResolverBuilder("environment"))) _
+    val platformStep = TerraformStep(partiallyAppliedModule("platform")(configResolverBuilder("platform"))) _
+    val pipeline = TerraformPipelines
+      .TerraformPipeline
+      .empty("all", command) ->
+      accountStep ->
+      environmentStep ->
+      platformStep
+
+    val pipelinesAvailable = registerPipelines(pipeline)
+
+    pipelinesAvailable(argsMap(ArgsParser.PIPELINENAME)).execute
+
 
   }
 
