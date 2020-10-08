@@ -1,12 +1,9 @@
-variable "storage_container_name" {
-  default = ""
+variable "env_state_container_name" {
 }
 variable "master_storage_account_name" {
-  default = ""
 }
 variable "rg_name" {
-  default = ""
 }
 variable "location" {
-  default = ""
 }
+variable "owner" {}

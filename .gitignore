@@ -26,3 +26,5 @@ target/
 .terraform
 build/
 dev_setup.sh
+.DS_Store
+

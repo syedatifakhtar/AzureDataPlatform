@@ -7,6 +7,10 @@ terraform {
   backend "azurerm" {}
 }
 
+data "http" "myip" {
+  url = "http://ipv4.icanhazip.com"
+}
+
 resource "azurerm_virtual_network" "platform-net" {
   name                = "platform-net"
   resource_group_name = var.parent_resource_group_name
@@ -75,19 +79,12 @@ resource "azurerm_subnet" "databricks_public" {
   }
 }
 
-resource "azurerm_subnet" "aks" {
-  name                 = "akssubnet"
-  resource_group_name  = var.parent_resource_group_name
-  virtual_network_name = azurerm_virtual_network.platform-net.name
-  address_prefixes = ["10.1.32.0/19"]
-}
-
 
 resource "azurerm_databricks_workspace" "dp_databricks_workspace" {
   name                = "db-workspace-main"
   resource_group_name = var.parent_resource_group_name
   location            = var.location
-  sku                 = "premium"
+  sku                 = "standard"
   custom_parameters {
     virtual_network_id = azurerm_virtual_network.platform-net.id
     private_subnet_name = azurerm_subnet.databricks_private.name
@@ -118,9 +115,9 @@ resource "azurerm_kubernetes_cluster" "aks_cluster" {
   network_profile {
     network_plugin    = "azure"
     load_balancer_sku = "Standard"
-
   }
 //  private_cluster_enabled = true
+  api_server_authorized_ip_ranges = ["${chomp(data.http.myip.body)}/32"]
   service_principal {
     client_id = var.client_id
     client_secret = var.client_secret
@@ -137,7 +134,6 @@ resource "azurerm_kubernetes_cluster" "aks_cluster" {
     os_disk_size_gb       = 50
     type                  = "AvailabilitySet"
     vm_size               = "Standard_DS4_v2"
-    vnet_subnet_id      = azurerm_subnet.aks.id
   }
 }
 

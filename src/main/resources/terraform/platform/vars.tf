@@ -1,5 +1,3 @@
-
-
 variable "location" {}
 variable "parent_resource_group_name" {}
 variable "deployment_identifier" {}

@@ -14,16 +14,17 @@ spec:
     spec:
       containers:
         - name: atlas
-          image: sburn/apache-atlas
+          image: sburn/apache-atlas:2.1.0
           ports:
             - containerPort: 21000
-          command: ["/opt/apache-atlas-2.0.0/bin/atlas_start.py"]
+          command: ["/opt/apache-atlas-2.1.0/bin/atlas_start.py"]
 ---
 apiVersion: v1
 kind: Service
 metadata:
   name: atlas-service
 spec:
+  type: LoadBalancer
   selector:
     app: atlas
   ports:
